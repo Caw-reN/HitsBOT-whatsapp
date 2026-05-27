@@ -1,0 +1,36 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "mysql"
+  // url      = env("DATABASE_URL")
+  // adapter  = ""
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Admin {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String   // Enforced bcrypt hash storage
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([username])
+}
+
+model BotConfig {
+  id                Int      @id @default(autoincrement())
+  botName           String   @default("HiTsBOT Agent") @db.VarChar(100)
+  waNumber          String?  @unique @db.VarChar(20)
+  waStatus          String   @default("DISCONNECTED") // CONNECTED, DISCONNECTED, SCANNING
+  aiProvider        String   @default("gemini") // gemini or openai
+  aiApiKey          String?  @db.VarChar(255)
+  systemInstruction String?  @db.Text // Maps directly to MySQL LONGTEXT/TEXT
+  aiTemperature     Float    @default(0.1)
+  updatedAt         DateTime @updatedAt
+
+  @@index([waNumber])
+}
