@@ -7,6 +7,7 @@ import { createServer } from 'http';
 import { initializeSocketIO, broadcastQR, broadcastStatus, broadcastMessage } from './socket/index.js';
 import { initializeWhatsApp, disconnectWhatsApp } from './whatsapp/index.js';
 import { initializeOutboundWorker, shutdownOutboundWorker } from './queue/index.js';
+import { handleIncomingMessage, disconnectAI, disconnectContextRedis } from './ai/index.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -39,6 +40,21 @@ initializeWhatsApp({
   },
   onMessageReceived: (message) => {
     broadcastMessage(message);
+
+    // Extract text content and route through AI pipeline
+    const text =
+      message.message?.conversation ||
+      message.message?.extendedTextMessage?.text;
+
+    if (text && message.key.remoteJid) {
+      handleIncomingMessage(
+        message.key.remoteJid,
+        text,
+        message.key.id || undefined,
+      ).catch((err: any) =>
+        console.error('[HiTsBOT] AI pipeline error:', err.message)
+      );
+    }
   },
 }).catch((err) => {
   console.error('[HiTsBOT] Failed to initialize WhatsApp:', err);
@@ -54,6 +70,8 @@ async function shutdown(signal: string) {
   console.log(`\n[HiTsBOT] ${signal} received — shutting down gracefully...`);
   await shutdownOutboundWorker();
   await disconnectWhatsApp();
+  await disconnectAI();
+  await disconnectContextRedis();
   httpServer.close(() => {
     console.log('[HiTsBOT] Server closed. Goodbye! 👋');
     process.exit(0);
