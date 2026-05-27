@@ -5,7 +5,8 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { initializeSocketIO, broadcastQR, broadcastStatus, broadcastMessage } from './socket/index.js';
-import { initializeWhatsApp } from './whatsapp/index.js';
+import { initializeWhatsApp, disconnectWhatsApp } from './whatsapp/index.js';
+import { initializeOutboundWorker, shutdownOutboundWorker } from './queue/index.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -25,6 +26,9 @@ const httpServer = createServer(app);
 // ─── Initialize Socket.io Gateway ───────────────────────────────────────────────
 initializeSocketIO(httpServer);
 
+// ─── Initialize BullMQ Outbound Worker ──────────────────────────────────────────
+initializeOutboundWorker();
+
 // ─── Initialize WhatsApp with Socket.io Broadcast Callbacks ─────────────────────
 initializeWhatsApp({
   onQR: (qr) => {
@@ -42,5 +46,19 @@ initializeWhatsApp({
 
 // ─── Start Server ───────────────────────────────────────────────────────────────
 httpServer.listen(PORT, () => {
-  console.log(`🚀 HiTsBOT Core API + Socket.io running on port ${PORT}`);
+  console.log(`🚀 HiTsBOT Core API + Socket.io + BullMQ running on port ${PORT}`);
 });
+
+// ─── Graceful Shutdown ──────────────────────────────────────────────────────────
+async function shutdown(signal: string) {
+  console.log(`\n[HiTsBOT] ${signal} received — shutting down gracefully...`);
+  await shutdownOutboundWorker();
+  await disconnectWhatsApp();
+  httpServer.close(() => {
+    console.log('[HiTsBOT] Server closed. Goodbye! 👋');
+    process.exit(0);
+  });
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
