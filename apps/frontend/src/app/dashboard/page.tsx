@@ -250,7 +250,7 @@ export default function DashboardPage() {
               Status Monitor
             </button>
             <button 
-              onClick={() => router.push("/dashboard/config")}
+              onClick={() => router.push("/dashboard/settings")}
               className="sidebar-item w-full flex items-center gap-3 bg-neo-white border-[3px] border-black text-black font-black uppercase text-xs tracking-wider p-3.5 shadow-neo-sm hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-neo-active active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer"
             >
               <Settings size={18} className="stroke-[2.5px]" />
