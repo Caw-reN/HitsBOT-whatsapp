@@ -3,6 +3,7 @@ dotenv.config();
 
 import express from 'express';
 import cors from 'cors';
+import bcrypt from 'bcrypt';
 import { createServer } from 'http';
 import { initializeSocketIO, broadcastQR, broadcastStatus, broadcastMessage } from './socket/index.js';
 import { initializeWhatsApp, disconnectWhatsApp } from './whatsapp/index.js';
@@ -94,6 +95,41 @@ const handleSaveSettings = async (req: express.Request, res: express.Response) =
 
 app.post('/api/settings', handleSaveSettings);
 app.put('/api/settings', handleSaveSettings);
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const prisma = getPrisma();
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      res.status(400).json({ message: 'Username dan password wajib diisi!' });
+      return;
+    }
+
+    const admin = await prisma.admin.findUnique({
+      where: { username },
+    });
+
+    if (!admin) {
+      res.status(401).json({ message: 'Username atau password salah!' });
+      return;
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, admin.password);
+    if (!isPasswordValid) {
+      res.status(401).json({ message: 'Username atau password salah!' });
+      return;
+    }
+
+    // Generate a simple token
+    const token = Buffer.from(`${admin.username}:${Date.now()}`).toString('base64');
+
+    res.status(200).json({ success: true, token, username: admin.username });
+  } catch (err: any) {
+    console.error('[AUTH] Login error:', err);
+    res.status(500).json({ message: 'Internal Server Error', details: err.message });
+  }
+});
 
 // ─── Create HTTP Server (shared between Express & Socket.io) ────────────────────
 const httpServer = createServer(app);

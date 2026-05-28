@@ -147,15 +147,18 @@ export default function LoginPage() {
       if (response.ok) {
         // Successful login path
         const data = await response.json();
-        // Save token or session logic here...
+        // Save token in cookie for middleware route guard
+        document.cookie = `token=${data.token}; path=/; max-age=86400; SameSite=Lax`;
         router.push("/dashboard");
       } else {
-        const errData = await response.json();
+        const errData = await response.json().catch(() => ({}));
         
         // Demo Bypass: If in development mode (404 backend offline) and credentials match demo values
         // or just bypass for testing, let the user know.
         if (response.status === 404 && username === "admin" && password === "admin123") {
           setIsLoading(true);
+          // Set a mock cookie for the demo session
+          document.cookie = "token=mock-demo-token; path=/; max-age=86400; SameSite=Lax";
           setTimeout(() => {
             router.push("/dashboard");
           }, 1500);
