@@ -55,7 +55,9 @@ export default function SettingsPage() {
 
   // Initialize Socket and Load Data
   useEffect(() => {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+    const backendUrl = typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
+      ? window.location.origin
+      : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001");
     
     // Connect socket for sidebar status
     const socket = io(backendUrl, {
@@ -178,7 +180,9 @@ export default function SettingsPage() {
     setNotification(null);
     setIsSaving(true);
 
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+    const backendUrl = typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
+      ? window.location.origin
+      : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001");
 
     try {
       const response = await fetch(`${backendUrl}/api/settings`, {

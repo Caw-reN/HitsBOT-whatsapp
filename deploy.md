@@ -1,14 +1,15 @@
-# Panduan Deployment Produksi HiTsBOT (Cloudflare Tunnel + PM2)
+# Panduan Deployment Produksi HiTsBOT (Single Subdomain: ai.hitshare.web.id)
 
-Panduan ini berisi langkah-demi-langkah (step-by-step) untuk mendeploy **HiTsBOT** ke VPS **Ubuntu 24.04 LTS**. 
+Panduan ini berisi langkah-demi-langkah (step-by-step) untuk mendeploy **HiTsBOT** ke VPS **Ubuntu 24.04 LTS** menggunakan satu subdomain terpadu: **`https://ai.hitshare.web.id`** untuk frontend maupun backend.
 
-Untuk alasan keamanan dan kesederhanaan, aplikasi akan dijalankan secara lokal di VPS (`localhost`), lalu dihubungkan ke internet menggunakan **Cloudflare Tunnel (cloudflared)**. Anda tidak perlu membuka port publik (seperti 3000, 3001, atau 3306) di firewall, dan tidak perlu mengonfigurasi Nginx secara manual.
+Jaringan akan menggunakan **Cloudflare Tunnel (cloudflared)** untuk meneruskan lalu lintas web publik ke port lokal VPS tanpa perlu membuka port firewall publik atau menggunakan konfigurasi Nginx manual.
 
 ---
 
-## 🏗️ Peta Arsitektur Jaringan
-* **Domain Utama:** `https://hitshare.web.id` ➔ Diarahkan oleh Cloudflare Tunnel ke Frontend Next.js (`http://localhost:3000`).
-* **Subdomain API:** `https://api.hitshare.web.id` ➔ Diarahkan oleh Cloudflare Tunnel ke Backend Core (`http://localhost:3001`).
+## 🏗️ Peta Arsitektur Jaringan (Single Subdomain)
+Lalu lintas masuk di bawah subdomain tunggal **`ai.hitshare.web.id`** akan diarahkan oleh Cloudflare Tunnel berdasarkan path:
+1. **Lalu Lintas API (`/api/*`):** `https://ai.hitshare.web.id/api/...` ➔ Port Backend Core (`http://localhost:3001`).
+2. **Lalu Lintas Web (Fallback):** `https://ai.hitshare.web.id/` ➔ Port Frontend Next.js (`http://localhost:3000`).
 
 ---
 
@@ -16,7 +17,16 @@ Untuk alasan keamanan dan kesederhanaan, aplikasi akan dijalankan secara lokal d
 
 SSH ke server VPS Ubuntu 24 Anda, lalu jalankan perintah-perintah berikut:
 
-### A. Install Node.js (v20+) & NPM
+### A. Deteksi Struktur Workspace Monorepo
+Sebelum memulai, gunakan perintah ini untuk mendeteksi letak tepat file `package.json` dan struktur folder dalam monorepo:
+```bash
+find . -name "package.json"
+```
+Ini akan memvalidasi bahwa Anda berada di root monorepo dan membantu memetakan lokasi folder `./apps/frontend` dan `./apps/backend-core`.
+
+---
+
+### B. Install Node.js (v20+) & NPM
 Gunakan NodeSource PPA untuk menginstal Node.js versi LTS terbaru:
 
 ```bash
@@ -38,7 +48,7 @@ npm -v   # Harus v10.x.x atau lebih tinggi
 
 ---
 
-### B. Install & Konfigurasi MySQL Server
+### C. Install & Konfigurasi MySQL Server
 1. **Instalasi MySQL:**
    ```bash
    sudo apt install mysql-server -y
@@ -68,7 +78,7 @@ npm -v   # Harus v10.x.x atau lebih tinggi
 
 ---
 
-### C. Install & Konfigurasi Redis Server
+### D. Install & Konfigurasi Redis Server
 Redis digunakan untuk antrean pesan keluar (**BullMQ**) dan penyimpanan context chat history.
 
 1. **Instalasi Redis:**
@@ -96,8 +106,7 @@ Redis digunakan untuk antrean pesan keluar (**BullMQ**) dan penyimpanan context 
 
 ---
 
-### D. Install PM2 (Process Manager) Secara Global
-PM2 digunakan untuk menjaga aplikasi backend dan frontend tetap berjalan di background secara terus-menerus.
+### E. Install PM2 (Process Manager) Secara Global
 ```bash
 sudo npm install -g pm2
 ```
@@ -114,14 +123,14 @@ cd /var/www
 git clone <URL_REPOSITORI_ANDA> hitsbot
 cd hitsbot
 
-# Install dependencies di tingkat root monorepo
+# Install dependencies di root monorepo
 npm install
 
-# Masuk ke folder backend dan install dependencies backend
+# Install dependencies untuk backend
 cd apps/backend-core
 npm install
 
-# Masuk ke folder frontend dan install dependencies frontend
+# Install dependencies untuk frontend
 cd ../frontend
 npm install
 ```
@@ -150,9 +159,9 @@ Buka file `.env` di folder `apps/frontend/`:
 cd /var/www/hitsbot/apps/frontend
 nano .env
 ```
-Salin template berikut. **Harap gunakan URL subdomain API publik Anda** agar browser klien dapat melakukan fetch ke backend:
+Salin template berikut. **NEXT_PUBLIC_API_URL harus diarahkan ke subdomain tunggal tanpa sub-port**, karena browser client akan memanggil API melalui domain publik:
 ```env
-NEXT_PUBLIC_API_URL="https://api.hitshare.web.id"
+NEXT_PUBLIC_API_URL="https://ai.hitshare.web.id"
 ```
 
 ---
@@ -306,41 +315,39 @@ Catat **Tunnel ID** (string UUID panjang) yang dicetak di terminal.
 
 ---
 
-### D. Buat File Konfigurasi Tunnel
+### D. Buat File Konfigurasi Tunnel (Path-Based Routing)
 Buat file konfigurasi yaml untuk mendefinisikan rute lalu lintas jaringan ke port lokal:
 ```bash
 mkdir -p ~/.cloudflare
 nano ~/.cloudflare/config.yml
 ```
-Salin dan lengkapi konfigurasi berikut (ganti `<TUNNEL_ID>` dengan UUID Tunnel Anda, dan `<USERNAME>` dengan nama user Ubuntu Anda):
+Salin dan lengkapi konfigurasi berikut. Bagian `ingress` menggunakan regex `^/api` untuk menangkap request backend, dan sisanya dilempar ke Next.js frontend (ganti `<TUNNEL_ID>` dengan UUID Tunnel Anda, dan `<USERNAME>` dengan nama user Ubuntu Anda):
 ```yaml
 tunnel: <TUNNEL_ID>
 credentials-file: /home/<USERNAME>/.cloudflare/<TUNNEL_ID>.json
 
 ingress:
-  # Rute domain utama ke Frontend Next.js (Port 3000)
-  - hostname: hitshare.web.id
-    service: http://localhost:3000
-
-  # Rute subdomain ke Backend API Express (Port 3001)
-  - hostname: api.hitshare.web.id
+  # Rute 2: Request API (/api) diarahkan ke Backend (Port 3001)
+  - hostname: ai.hitshare.web.id
+    path: ^/api
     service: http://localhost:3001
 
-  # Rute fallback jika tidak ada hostname yang cocok (Error 404)
+  # Rute 1: Semua request lain diarahkan ke Frontend Next.js (Port 3000)
+  - hostname: ai.hitshare.web.id
+    service: http://localhost:3000
+
+  # Fallback error jika hostname tidak cocok
   - service: http_status:404
 ```
 
 ---
 
-### E. Melakukan Routing DNS
-Koneksikan tunnel Anda dengan DNS record Cloudflare:
+### E. Melakukan Routing DNS Subdomain Tunggal
+Koneksikan tunnel Anda dengan DNS record Cloudflare untuk subdomain `ai`:
 
 ```bash
-# Rute untuk domain utama
-cloudflared tunnel route dns hitsbot-tunnel hitshare.web.id
-
-# Rute untuk subdomain API
-cloudflared tunnel route dns hitsbot-tunnel api.hitshare.web.id
+# Daftarkan rute DNS untuk subdomain tunggal 'ai'
+cloudflared tunnel route dns hitsbot-tunnel ai.hitshare.web.id
 ```
 
 ---
@@ -364,42 +371,6 @@ sudo systemctl status cloudflared
 
 ---
 
-## 5. Manajemen Sesi Baileys (PENTING)
-
-Baileys WhatsApp MD menyimpan token dan kunci enkripsi sesi Anda di folder `apps/backend-core/sessions/`.
-
-1. **Abaikan Watch PM2:**
-   Pastikan di dalam `ecosystem.config.cjs` tertulis `watch: false` dan `ignore_watch: ['node_modules', 'sessions']`. Jika tidak diatur, PM2 akan mendeteksi penulisan file baru di folder `sessions/` saat proses autentikasi QR Code dan langsung merestart aplikasi, menyebabkan loop crash (koneksi terputus-putus).
-2. **Hak Akses Folder (Permissions):**
-   Pastikan user Linux yang menjalankan PM2 memiliki hak akses tulis/baca penuh pada folder tersebut:
-   ```bash
-   sudo chown -R ubuntu:ubuntu /var/www/hitsbot/apps/backend-core/sessions
-   ```
-3. **Backup folder Sesi:**
-   Jangan hapus atau bersihkan folder `sessions/` ini saat melakukan update kode Git di VPS. Backup folder ini secara berkala agar Anda tidak perlu memindai ulang QR Code WhatsApp.
-
----
-
-## 6. Troubleshooting Ringkas
-
-* **Cek Log PM2 (Real-time):**
-  ```bash
-  pm2 logs
-  ```
-* **Cek Status Proses:**
-  ```bash
-  pm2 status
-  ```
-* **Restart Layanan Aplikasi:**
-  ```bash
-  pm2 restart all
-  ```
-* **Restart Redis / MySQL Service:**
-  ```bash
-  sudo systemctl restart redis-server
-  sudo systemctl restart mysql
-  ```
-* **Cek Status Cloudflare Tunnel:**
-  ```bash
-  sudo systemctl status cloudflared
-  ```
+## 5. Selesai & Pengujian
+Sekarang, Anda dapat mengakses platform di **`https://ai.hitshare.web.id`**.
+Semua interaksi client ke `https://ai.hitshare.web.id/api/...` akan secara otomatis dirutekan ke backend lokal port 3001, sedangkan loading halaman reguler masuk ke frontend lokal port 3000.

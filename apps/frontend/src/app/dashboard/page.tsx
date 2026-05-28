@@ -88,7 +88,9 @@ export default function DashboardPage() {
       }
     ]);
 
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+    const backendUrl = typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
+      ? window.location.origin
+      : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001");
     
     // Initialize Socket.io client
     const socket = io(backendUrl, {
