@@ -54,6 +54,7 @@ interface ConsoleLogEntry {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [status, setStatus] = useState<WAConnectionUpdate["status"]>("DISCONNECTED");
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -64,14 +65,7 @@ export default function DashboardPage() {
     redisStatus: "AKTIF"
   });
 
-  const [consoleLogs, setConsoleLogs] = useState<ConsoleLogEntry[]>([
-    {
-      id: "init-1",
-      timestamp: new Date().toLocaleTimeString(),
-      type: "info",
-      text: "Dashboard initialized. Menghubungkan ke Socket.io..."
-    }
-  ]);
+  const [consoleLogs, setConsoleLogs] = useState<ConsoleLogEntry[]>([]);
 
   const socketRef = useRef<Socket | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -84,6 +78,16 @@ export default function DashboardPage() {
 
   // Handle Socket.io connection and listeners
   useEffect(() => {
+    setMounted(true);
+    setConsoleLogs([
+      {
+        id: "init-1",
+        timestamp: new Date().toLocaleTimeString(),
+        type: "info",
+        text: "Dashboard initialized. Menghubungkan ke Socket.io..."
+      }
+    ]);
+
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
     
     // Initialize Socket.io client
@@ -154,6 +158,8 @@ export default function DashboardPage() {
 
   // Snappy GSAP staggered entrance on mount
   useEffect(() => {
+    if (!mounted) return;
+
     const ctx = gsap.context(() => {
       // Stagger entrance for sidebar, header, and grid elements
       const tl = gsap.timeline();
@@ -180,7 +186,7 @@ export default function DashboardPage() {
     }, containerRef);
 
     return () => ctx.revert();
-  }, []);
+  }, [mounted]);
 
   const addConsoleEntry = (type: ConsoleLogEntry["type"], text: string) => {
     setConsoleLogs((prev) => [
@@ -226,6 +232,19 @@ export default function DashboardPage() {
         return "text-white font-medium";
     }
   };
+
+  if (!mounted) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-neo-bg text-black font-sans">
+        <div className="flex flex-col items-center gap-4 bg-neo-white border-[4px] border-black p-8 shadow-neo">
+          <div className="w-10 h-10 border-[4px] border-black border-t-transparent rounded-full animate-spin"></div>
+          <span className="font-black uppercase tracking-wider text-sm">
+            Memulai Panel Monitor...
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div 

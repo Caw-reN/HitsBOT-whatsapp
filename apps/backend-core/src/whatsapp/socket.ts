@@ -8,7 +8,13 @@ import makeWASocket, {
 import { Boom } from '@hapi/boom';
 import path from 'path';
 import pino from 'pino';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { WAConnectionStatus, WAConnectionUpdate, WAEventCallbacks } from './types.js';
+
+// Reconstruct __dirname for ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 // Session auth persistence path as defined in claude.md:
@@ -160,8 +166,8 @@ function handleConnectionUpdate(
     const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
     const errorMessage = (lastDisconnect?.error as Boom)?.message || 'Unknown error';
 
-    // If the user explicitly logged out, don't attempt reconnection
-    const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+    // If the user explicitly logged out or session became unauthorized (401)
+    const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
 
     console.log(
       `[WhatsApp] ❌ Connection closed — code: ${statusCode}, reason: "${errorMessage}", ` +
@@ -183,11 +189,37 @@ function handleConnectionUpdate(
 
       setTimeout(() => {
         if (eventCallbacks) {
-          initializeWhatsApp(eventCallbacks);
+          initializeWhatsApp(eventCallbacks).catch((err) => {
+            console.error('[WhatsApp] ❌ Reconnection initialization failed:', err);
+          });
         }
       }, RECONNECT_DELAY_MS);
     } else if (isLoggedOut) {
-      console.log('[WhatsApp] 🚪 Logged out — manual re-authentication required.');
+      console.log('[WhatsApp] 🚪 Logged out (401) — cleaning sessions directory...');
+      
+      // Clean sessions directory to trigger fresh QR code on next connect
+      try {
+        if (fs.existsSync(SESSIONS_DIR)) {
+          fs.rmSync(SESSIONS_DIR, { recursive: true, force: true });
+        }
+        fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+        console.log('[WhatsApp] 🧹 Sessions directory successfully cleaned.');
+      } catch (err: any) {
+        console.error('[WhatsApp] ❌ Error cleaning sessions directory:', err.message);
+      }
+
+      // Reset socket state
+      sock = null;
+      reconnectAttempts = 0;
+
+      // Automatically re-initialize Baileys connection instance right after cleaning up,
+      // so a fresh QR code is immediately generated and streamed to the frontend
+      if (eventCallbacks) {
+        console.log('[WhatsApp] 🔄 Re-initializing connection to generate a fresh QR...');
+        initializeWhatsApp(eventCallbacks).catch((err) => {
+          console.error('[WhatsApp] ❌ Failed to re-initialize WhatsApp after logout:', err);
+        });
+      }
     } else {
       console.log('[WhatsApp] 💀 Max reconnection attempts reached. Giving up.');
     }

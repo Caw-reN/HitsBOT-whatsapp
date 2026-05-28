@@ -76,7 +76,7 @@ export default function SettingsPage() {
     });
 
     // Fetch initial configuration from backend
-    fetch(`${backendUrl}/api/config`)
+    fetch(`${backendUrl}/api/settings`)
       .then((res) => {
         if (!res.ok) throw new Error("Gagal memuat konfigurasi");
         return res.json();
@@ -181,7 +181,7 @@ export default function SettingsPage() {
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
     try {
-      const response = await fetch(`${backendUrl}/api/config`, {
+      const response = await fetch(`${backendUrl}/api/settings`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -190,24 +190,28 @@ export default function SettingsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Gagal memperbarui konfigurasi");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Gagal memperbarui konfigurasi");
       }
 
-      const updated = await response.json();
       setNotification({
         type: "success",
         text: "Konfigurasi bot berhasil diperbarui!"
       });
       
-      // Flash the updated values
-      setConfig({
-        botName: updated.botName,
-        waNumber: updated.waNumber,
-        aiProvider: updated.aiProvider,
-        aiApiKey: updated.aiApiKey || "",
-        systemInstruction: updated.systemInstruction || "",
-        aiTemperature: updated.aiTemperature,
-      });
+      // Fetch latest values from backend to verify and synchronize the UI state
+      const freshRes = await fetch(`${backendUrl}/api/settings`);
+      if (freshRes.ok) {
+        const data = await freshRes.json();
+        setConfig({
+          botName: data.botName || "HiTsBOT Agent",
+          waNumber: data.waNumber || "",
+          aiProvider: data.aiProvider || "gemini",
+          aiApiKey: data.aiApiKey || "",
+          systemInstruction: data.systemInstruction || "",
+          aiTemperature: data.aiTemperature ?? 0.1,
+        });
+      }
 
       // Simple GSAP alert animation
       gsap.fromTo(

@@ -1,17 +1,14 @@
 import { GoogleGenAI } from '@google/genai';
-import { PrismaClient } from '@prisma/client';
 import { getChatHistory, appendToHistory, ContextMessage } from './context.js';
 import { detectInjection, getFallbackResponse } from './guardrails.js';
 import { enqueueOutboundMessage } from '../queue/index.js';
-
-// ─── Prisma Client (singleton) ──────────────────────────────────────────────────
-const prisma = new PrismaClient();
+import { getPrisma } from '../prisma.js';
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 // Per claude.md §4: "Always default or override model parameters to
 // aiTemperature <= 0.2 to eliminate loose hallucinations"
 const MAX_ALLOWED_TEMPERATURE = 0.2;
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
 
 /**
  * Core AI service that processes an incoming WhatsApp message through the
@@ -36,7 +33,7 @@ export async function handleIncomingMessage(
   console.log(`[AI] 🧠 Processing message from ${customerJid}: "${incomingText.substring(0, 50)}..."`);
 
   // ── Step 1: Fetch BotConfig from MySQL ────────────────────────────────────────
-  const config = await prisma.botConfig.findFirst({
+  const config = await getPrisma().botConfig.findFirst({
     select: {
       aiApiKey: true,
       systemInstruction: true,
@@ -173,6 +170,6 @@ function buildDefaultSystemPrompt(botName: string): string {
  * Call during server shutdown.
  */
 export async function disconnectAI(): Promise<void> {
-  await prisma.$disconnect();
-  console.log('[AI] Prisma client disconnected.');
+  // Prisma disconnection is now managed globally in index.ts via disconnectPrisma()
+  console.log('[AI] Service shut down.');
 }

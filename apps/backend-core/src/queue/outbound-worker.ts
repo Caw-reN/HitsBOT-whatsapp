@@ -42,7 +42,7 @@ export function initializeOutboundWorker(): Worker<OutboundMessageJob> {
   worker = new Worker<OutboundMessageJob>(
     QUEUE_NAMES.MESSAGE_OUTBOUND,
     async (job: Job<OutboundMessageJob>) => {
-      const { recipientJid, text, quotedMessageId } = job.data;
+      const { recipientJid, text } = job.data;
 
       console.log(
         `[Worker] 🔧 Processing job ${job.id} → ${recipientJid}`
@@ -53,40 +53,44 @@ export function initializeOutboundWorker(): Worker<OutboundMessageJob> {
       console.log(`[Worker] ⏳ Waiting ${delay}ms (human delay)...`);
       await sleep(delay);
 
-      // ── Step 2: Send 'composing' presence for 2s ────────────────────────────
+      // ── Step 2: Format Remote JID & Send Presence ───────────────────────────
       const sock = getSocket();
-      await sock.presenceSubscribe(recipientJid);
-      await sock.sendPresenceUpdate('composing', recipientJid);
-      console.log(`[Worker] ⌨️  Typing indicator sent to ${recipientJid}...`);
+      
+      // Ensure the remote JID is correctly formatted
+      let formattedJid = recipientJid;
+      if (!formattedJid.includes('@')) {
+        formattedJid = `${formattedJid}@s.whatsapp.net`;
+      }
+
+      await sock.presenceSubscribe(formattedJid);
+      await sock.sendPresenceUpdate('composing', formattedJid);
+      console.log(`[Worker] ⌨️  Typing indicator sent to ${formattedJid}...`);
       await sleep(COMPOSING_DURATION_MS);
 
       // Clear the composing state before sending
-      await sock.sendPresenceUpdate('paused', recipientJid);
+      await sock.sendPresenceUpdate('paused', formattedJid);
 
-      // ── Step 3: Send the message ────────────────────────────────────────────
-      const sentMsg = await sock.sendMessage(
-        recipientJid,
-        { text },
-        quotedMessageId
-          ? {
-              quoted: {
-                key: {
-                  remoteJid: recipientJid,
-                  id: quotedMessageId,
-                },
-                message: undefined,
-              } as any,
-            }
-          : undefined,
-      );
+      // ── Step 3: Send the message strictly in the required format ────────────
+      let sentMsg: any = null;
+      try {
+        console.log(`[Worker] ✉️  Sending text payload to ${formattedJid}`);
+        
+        // Ensure Baileys sends the text strictly using the correct format:
+        // await sock.sendMessage(jid, { text: messageContent })
+        sentMsg = await sock.sendMessage(formattedJid, { text });
+        
+        console.log(
+          `[Worker] ✅ Message sent to ${formattedJid} (msgId: ${sentMsg?.key?.id})`
+        );
+      } catch (baileysErr: any) {
+        console.error(`[Worker] ❌ Baileys sendMessage error to ${formattedJid}:`, baileysErr);
+        throw baileysErr;
+      }
 
-      console.log(
-        `[Worker] ✅ Message sent to ${recipientJid} (msgId: ${sentMsg?.key?.id})`
-      );
-
+      // Ensure the BullMQ worker processor properly completes the job
       return {
         messageId: sentMsg?.key?.id,
-        recipientJid,
+        recipientJid: formattedJid,
         sentAt: new Date().toISOString(),
       };
     },

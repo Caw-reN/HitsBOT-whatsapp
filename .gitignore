@@ -1,0 +1,67 @@
+# ==========================================
+# 📦 Dependencies & Packages
+# ==========================================
+node_modules/
+.pnpm-store/
+yarn-error.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ==========================================
+# 🔒 Security & Environment Variables
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+
+# ==========================================
+# 📱 WhatsApp Engine Storage (CRITICAL!)
+# ==========================================
+# Memastikan token enkripsi sesi WhatsApp tidak bocor ke publik
+apps/backend-core/sessions/
+*.auth.json
+
+# ==========================================
+# 🛠️ Build Outputs & Compiled Code
+# ==========================================
+dist/
+build/
+.next/
+out/
+.docusaurus/
+TS-compiled-output/
+
+# ==========================================
+# 💾 Databases & Local Storage Logs
+# ==========================================
+# Mengabaikan file log SQLite bawaan jika suatu saat iseng pakai SQLite
+*.db
+*.db-journal
+# Mengabaikan file log Redis lokal
+*.rdb
+logs/
+*.log
+
+# ==========================================
+# 🖥️ System & IDE Configurations
+# ==========================================
+.DS_Store
+Thumbs.db
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# ==========================================
+# ⚙️ Prisma ORM Outputs
+# ==========================================
+# Jika kamu menggunakan skema migrasi lokal yang bersifat sementara
+# (Untuk migrasi resmi tetap aman di-up karena berada di folder prisma/migrations)
+.prisma/
